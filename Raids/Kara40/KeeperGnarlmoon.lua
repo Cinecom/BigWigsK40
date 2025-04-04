@@ -553,45 +553,55 @@ function module:OwlEnrage()
 end
 
 function module:CheckOwlDeath()
-	-- Check if an owl died prematurely
-	if inOwlPhase and (redOwl1Died or redOwl2Died or blueOwl1Died or blueOwl2Died) then
-		local count = 0
-		if redOwl1Died then count = count + 1 end
-		if redOwl2Died then count = count + 1 end
-		if blueOwl1Died then count = count + 1 end
-		if blueOwl2Died then count = count + 1 end
-		
-		-- If one owl died but not all, trigger early enrage
-		if count > 0 and count < 4 then
-			-- Cancel normal enrage timer
-			self:RemoveBar(L["bar_owlenrage"])
-			
-			-- Start 10 second enrage timer
-			if self.db.profile.enrage then
-				self:Bar(L["bar_owlenrage"], 10, icon.enrage, true, color.red)
-				self:DelayedMessage(10, L["warn_owlenrage"], "Important", nil, "Beware")
-			end
-		end
-		
-		-- If all owls are dead, end owl phase
-		if count == 4 then
-			inOwlPhase = nil
-			
-			-- Hide the owl frame
-			if self.owlStatusFrame then
-				self.owlStatusFrame:Hide()
-			end
-			
-			-- Cancel remaining timers
-			self:RemoveBar(L["bar_owlenrage"])
-			
-			-- Clear raid marks
-			self:ClearRaidMarks()
-		end
-	end
-	
-	-- Update the status frame
-	self:UpdateOwlStatusFrame()
+    -- Check if an owl died prematurely
+    if inOwlPhase and (redOwl1Died or redOwl2Died or blueOwl1Died or blueOwl2Died) then
+        local count = 0
+        if redOwl1Died then count = count + 1 end
+        if redOwl2Died then count = count + 1 end
+        if blueOwl1Died then count = count + 1 end
+        if blueOwl2Died then count = count + 1 end
+        
+        -- If one owl died but not all, trigger early enrage
+        if count > 0 and count < 4 then
+            -- Cancel normal enrage timer
+            self:RemoveBar(L["bar_owlenrage"])
+            
+            -- Start 10 second enrage timer
+            if self.db.profile.enrage then
+                self:Bar(L["bar_owlenrage"], 10, icon.enrage, true, color.red)
+                self:DelayedMessage(10, L["warn_owlenrage"], "Important", nil, "Beware")
+            end
+        end
+        
+        -- If all owls are dead, end owl phase
+        if count == 4 then
+            inOwlPhase = nil
+            
+            -- Hide the owl frame
+            if self.owlStatusFrame then
+                self.owlStatusFrame:Hide()
+            end
+            
+            -- Cancel remaining timers
+            self:RemoveBar(L["bar_owlenrage"])
+            
+            -- Clear raid marks
+            self:ClearRaidMarks()
+            
+            -- Alert players about immediate Lunar Shift
+            if self.db.profile.lunarshift then
+                self:Message("Keeper Gnarlmoon resumes casting Lunar Shift! HIDE NOW!", "Important", false, "Alarm")
+                self:WarningSign(icon.lunarshift, 3)
+                self:Sound("Beware")
+                
+                -- Start the Lunar Shift timer immediately
+                self:Bar(L["bar_lunarshiftcd"], timer.lunarShiftCD, icon.lunarshift, true, color.yellow)
+            end
+        end
+    end
+    
+    -- Update the status frame
+    self:UpdateOwlStatusFrame()
 end
 
 function module:CheckOwlHps()

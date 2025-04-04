@@ -156,7 +156,7 @@ local blueOwl2Mark = 4 -- Triangle
 function module:OnEnable()
 	-- Load Boss Mechanics
 	LoadBossEncounter()
-	
+
 	-- Register events
 	self:RegisterEvent("CHAT_MSG_MONSTER_YELL")
 	
@@ -731,3 +731,108 @@ function module:UpdateOwlStatusFrame()
 		self.owlStatusFrame.redOwl2:SetText(L["redowl2_label"] .. ":")
 		self.owlStatusFrame.redOwl2:SetFont(font, fontSize)
 		self.owlStatusFrame.redOwl2:SetTextColor(1, 0.3, 0.3)
+		self.owlStatusFrame.redOwl2Hp = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
+		self.owlStatusFrame.redOwl2Hp:SetFontObject(GameFontNormal)
+		self.owlStatusFrame.redOwl2Hp:SetPoint("LEFT", self.owlStatusFrame.redOwl2, "RIGHT", 5, 0)
+		self.owlStatusFrame.redOwl2Hp:SetJustifyH("LEFT")
+		self.owlStatusFrame.redOwl2Hp:SetFont(font, fontSize)
+
+		-- Blue Owl 1
+		self.owlStatusFrame.blueOwl1 = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
+		self.owlStatusFrame.blueOwl1:SetFontObject(GameFontNormal)
+		self.owlStatusFrame.blueOwl1:SetPoint("LEFT", self.owlStatusFrame.blueOwl1Icon, "RIGHT", 5, 0)
+		self.owlStatusFrame.blueOwl1:SetText(L["blueowl1_label"] .. ":")
+		self.owlStatusFrame.blueOwl1:SetFont(font, fontSize)
+		self.owlStatusFrame.blueOwl1:SetTextColor(0.3, 0.3, 1)
+
+		self.owlStatusFrame.blueOwl1Hp = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
+		self.owlStatusFrame.blueOwl1Hp:SetFontObject(GameFontNormal)
+		self.owlStatusFrame.blueOwl1Hp:SetPoint("LEFT", self.owlStatusFrame.blueOwl1, "RIGHT", 5, 0)
+		self.owlStatusFrame.blueOwl1Hp:SetJustifyH("LEFT")
+		self.owlStatusFrame.blueOwl1Hp:SetFont(font, fontSize)
+
+		-- Blue Owl 2
+		self.owlStatusFrame.blueOwl2 = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
+		self.owlStatusFrame.blueOwl2:SetFontObject(GameFontNormal)
+		self.owlStatusFrame.blueOwl2:SetPoint("LEFT", self.owlStatusFrame.blueOwl2Icon, "RIGHT", 5, 0)
+		self.owlStatusFrame.blueOwl2:SetText(L["blueowl2_label"] .. ":")
+		self.owlStatusFrame.blueOwl2:SetFont(font, fontSize)
+		self.owlStatusFrame.blueOwl2:SetTextColor(0.3, 0.3, 1)
+
+		self.owlStatusFrame.blueOwl2Hp = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
+		self.owlStatusFrame.blueOwl2Hp:SetFontObject(GameFontNormal)
+		self.owlStatusFrame.blueOwl2Hp:SetPoint("LEFT", self.owlStatusFrame.blueOwl2, "RIGHT", 5, 0)
+		self.owlStatusFrame.blueOwl2Hp:SetJustifyH("LEFT")
+		self.owlStatusFrame.blueOwl2Hp:SetFont(font, fontSize)
+	end
+	
+	-- Only show frame during owl phase
+	if inOwlPhase then
+		self.owlStatusFrame:Show()
+	else
+		self.owlStatusFrame:Hide()
+	end
+
+	-- Update HP values
+	self.owlStatusFrame.redOwl1Hp:SetText(string.format("%d%%", redOwl1Hp))
+	self.owlStatusFrame.redOwl2Hp:SetText(string.format("%d%%", redOwl2Hp))
+	self.owlStatusFrame.blueOwl1Hp:SetText(string.format("%d%%", blueOwl1Hp))
+	self.owlStatusFrame.blueOwl2Hp:SetText(string.format("%d%%", blueOwl2Hp))
+end
+
+-- Function to clear raid marks from owls when phase ends or we wipe
+function module:ClearRaidMarks()
+	if not (IsRaidLeader() or IsRaidOfficer()) then return end
+	
+	-- Only attempt to clear marks if we have targets
+	for i = 1, GetNumRaidMembers() do
+		local targetID = "raid" .. i .. "target"
+		if UnitExists(targetID) then
+			local mark = GetRaidTargetIndex(targetID)
+			if mark and (mark == redOwl1Mark or mark == redOwl2Mark or mark == blueOwl1Mark or mark == blueOwl2Mark) then
+				SetRaidTarget(targetID, 0)
+			end
+		end
+	end
+end
+
+-- Function to handle proximity warnings
+function module:ProximityCheck()
+	if not playerMoon then return end
+	
+	local oppositeColor = playerMoon == "red" and "blue" or "red"
+	local tooClose = false
+	
+	-- Check proximity to players with opposite moon color
+	for i = 1, GetNumRaidMembers() do
+		if CheckInteractDistance("raid"..i, 2) and UnitIsDeadOrGhost("raid"..i) == nil then
+			-- Check if this player has the opposite moon color
+			local name = UnitName("raid"..i)
+			if name and self.playerMoonTypes[name] == oppositeColor then
+				tooClose = true
+				break
+			end
+		end
+	end
+	
+	-- Warn if too close
+	if tooClose and self.db.profile.proximity then
+		if not self.proximityWarned then
+			self:Message(L["proximity_close"], "Personal", true)
+			self:WarningSign(playerMoon == "red" and icon.bluemoon or icon.redmoon, 1)
+			self:Sound("Alarm")
+			self.proximityWarned = true
+		end
+	else
+		self.proximityWarned = nil
+	end
+end
+
+-- This function would be called repeatedly to check proximity
+function module:ScheduleProximityCheck()
+	self:ScheduleRepeatingEvent("GnarlmoonProximityCheck", self.ProximityCheck, 0.5, self)
+end
+
+function module:CancelProximityCheck()
+	self:CancelScheduledEvent("GnarlmoonProximityCheck")
+end

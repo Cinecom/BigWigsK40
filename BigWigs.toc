@@ -233,5 +233,3 @@ Raids\Kara40\Rupturan.lua
 Raids\Kara40\SansTasVal.lua
 Raids\Kara40\SigmaBoy.lua
 Raids\Kara40\Mepishroth.lua
-
-Raids\Kara40\Trash\ShadowclawDarkbringer.lua
